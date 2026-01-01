@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>타이머</title>
+
+<style>
+/* ================= 공통 ================= */
+*{ box-sizing:border-box; }
+
+body{
+  margin:0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background:#000;
+  color:#fff;
+  overscroll-behavior:none;
+}
+
+/* 모든 글자 흰색 강제 */
+body, body *{
+  color:#fff;
+}
+
+.wrap{
+  min-height:100dvh;
+  padding:14px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  max-width:520px;
+  margin:0 auto;
+}
+
+.card{
+  background:#111;
+  border-radius:16px;
+  padding:14px;
+}
+
+/* ================= 타이머 ================= */
+.timerArea{
+  text-align:center;
+}
+
+.big{
+  font-weight:900;
+  letter-spacing:-4px;
+  line-height:1;
+  font-size:min(36vw, 150px);
+}
+
+.sub{
+  margin-top:8px;
+  font-size:14px;
+  opacity:.7;
+}
+
+/* ================= 컨트롤 ================= */
+.controls{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  justify-content:center;
+  margin-top:14px;
+}
+
+input, button{
+  font-size:16px;
+  padding:12px;
+  border-radius:12px;
+  border:none;
+  min-height:52px;
+}
+
+input{
+  width:110px;
+  text-align:center;
+  background:#0d0d0d;
+  color:#fff;
+}
+
+input::placeholder{
+  color:rgba(255,255,255,.5);
+}
+
+button{
+  background:#fff;
+  color:#000;
+}
+
+button.secondary{
+  background:#444;
+  color:#fff;
+}
+
+button:disabled{
+  opacity:.4;
+}
+
+/* ================= KPI ================= */
+.kpi{
+  display:flex;
+  gap:10px;
+}
+
+.kpi .box{
+  flex:1;
+  background:#1a1a1a;
+  border-radius:14px;
+  padding:12px;
+}
+
+.kpi .label{
+  font-size:13px;
+  opacity:.6;
+}
+
+.kpi .val{
+  font-size:22px;
+  font-weight:900;
+  margin-top:4px;
+}
+
+/* ================= 기록 ================= */
+.recordHead{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  margin-bottom:10px;
+}
+
+.list{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  max-height:40vh;
+  overflow:auto;
+}
+
+.item{
+  background:#1a1a1a;
+  border-radius:14px;
+  padding:10px 12px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  font-size:14px;
+}
+
+.meta{
+  font-size:13px;
+  opacity:.7;
+}
+
+.acc{
+  font-size:13px;
+  opacity:.8;
+}
+
+/* ================= 다이얼로그 ================= */
+dialog{
+  border:none;
+  border-radius:16px;
+  width:min(420px, 92vw);
+  background:#111;
+}
+
+dialog::backdrop{
+  background:rgba(0,0,0,.7);
+}
+
+.dlg{
+  padding:14px;
+}
+
+.dlgTitle{
+  font-size:18px;
+  font-weight:900;
+}
+
+.dlgGrid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-top:12px;
+}
+
+.dlgActions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  margin-top:12px;
+}
+
+/* ================= 가로 UI ================= */
+@media (orientation: landscape){
+  .wrap{
+    max-width:none;
+    margin:0;
+    display:grid;
+    grid-template-columns:1.1fr .9fr;
+    gap:14px;
+    align-items:stretch;
+  }
+
+  .big{
+    font-size:min(70vh, 42vw);
+  }
+
+  .list{
+    max-height:38vh;
+  }
+}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+
+  <!-- 타이머 -->
+  <div class="card">
+    <div class="timerArea">
+      <div class="big" id="timeText">25:00</div>
+      <div class="sub" id="stateText">준비됨</div>
+
+      <div class="controls">
+        <input id="minutesInput" type="number" min="1" max="300" value="25">
+        <button id="startBtn">시작</button>
+        <button id="pauseBtn" class="secondary" disabled>일시정지</button>
+        <button id="resetBtn" class="secondary">리셋</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 우측 패널 -->
+  <div style="display:flex; flex-direction:column; gap:12px;">
+
+    <!-- KPI -->
+    <div class="card">
+      <div class="kpi">
+        <div class="box">
+          <div class="label">오늘 푼 문제</div>
+          <div class="val" id="todaySolved">0</div>
+        </div>
+        <div class="box">
+          <div class="label">전체 푼 문제</div>
+          <div class="val" id="allSolved">0</div>
+        </div>
+      </div>
+      <div class="kpi" style="margin-top:10px;">
+        <div class="box">
+          <div class="label">오늘 정답률</div>
+          <div class="val" id="todayAcc">0%</div>
+        </div>
+        <div class="box">
+          <div class="label">전체 정답률</div>
+          <div class="val" id="allAcc">0%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 기록 -->
+    <div class="card">
+      <div class="recordHead">
+        <b>기록</b>
+        <button id="clearBtn" class="secondary">전체 삭제</button>
+      </div>
+      <div class="list" id="list"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- 종료 입력 -->
+<dialog id="finishDialog">
+  <div class="dlg">
+    <div class="dlgTitle">타이머 끝!</div>
+    <div class="dlgGrid">
+      <input id="solvedInput" type="number" placeholder="푼 문제">
+      <input id="correctInput" type="number" placeholder="맞힌 문제">
+    </div>
+    <div class="dlgActions">
+      <button id="skipBtn" class="secondary">건너뛰기</button>
+      <button id="saveBtn">저장</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+(() => {
+  const KEY="timer_records_v3";
+  const $=id=>document.getElementById(id);
+
+  const timeText=$("timeText"), stateText=$("stateText");
+  const minutesInput=$("minutesInput");
+  const startBtn=$("startBtn"), pauseBtn=$("pauseBtn"), resetBtn=$("resetBtn");
+  const todaySolved=$("todaySolved"), allSolved=$("allSolved");
+  const todayAcc=$("todayAcc"), allAcc=$("allAcc");
+  const list=$("list"), clearBtn=$("clearBtn");
+
+  const dlg=$("finishDialog");
+  const solvedInput=$("solvedInput"), correctInput=$("correctInput");
+  const saveBtn=$("saveBtn"), skipBtn=$("skipBtn");
+
+  let entries=JSON.parse(localStorage.getItem(KEY)||"[]");
+
+  let duration=minutesInput.value*60;
+  let remain=duration;
+  let timer=null;
+
+  const pad=n=>String(n).padStart(2,"0");
+  const fmt=s=>`${pad(s/60|0)}:${pad(s%60)}`;
+  const pct=(c,s)=>s?Math.round(c/s*1000)/10:0;
+
+  const render=()=>{
+    list.innerHTML="";
+    let ts=0, tc=0, as=0, ac=0;
+    const today=new Date().toDateString();
+
+    entries.slice().reverse().forEach(e=>{
+      as+=e.solved; ac+=e.correct;
+      if(new Date(e.ts).toDateString()===today){
+        ts+=e.solved; tc+=e.correct;
+      }
+      const div=document.createElement("div");
+      div.className="item";
+      div.innerHTML=`
+        <div>
+          <div>${new Date(e.ts).toLocaleString()}</div>
+          <div class="meta">맞힘 ${e.correct}/${e.solved}</div>
+        </div>
+        <div>
+          ${e.solved}문제
+          <div class="acc">${pct(e.correct,e.solved)}%</div>
+        </div>`;
+      list.appendChild(div);
+    });
+
+    todaySolved.textContent=ts;
+    allSolved.textContent=as;
+    todayAcc.textContent=pct(tc,ts)+"%";
+    allAcc.textContent=pct(ac,as)+"%";
+  };
+
+  render();
+  timeText.textContent=fmt(remain);
+
+  startBtn.onclick=()=>{
+    if(timer) return;
+    stateText.textContent="진행 중";
+    pauseBtn.disabled=false;
+    timer=setInterval(()=>{
+      remain--;
+      timeText.textContent=fmt(remain);
+      if(remain<=0){
+        clearInterval(timer); timer=null;
+        dlg.showModal();
+      }
+    },1000);
+  };
+
+  pauseBtn.onclick=()=>{
+    clearInterval(timer); timer=null;
+    stateText.textContent="일시정지";
+  };
+
+  resetBtn.onclick=()=>{
+    clearInterval(timer); timer=null;
+    duration=minutesInput.value*60;
+    remain=duration;
+    timeText.textContent=fmt(remain);
+    stateText.textContent="준비됨";
+  };
+
+  saveBtn.onclick=()=>{
+    const s=+solvedInput.value, c=+correctInput.value;
+    if(c<=s){
+      entries.push({ts:Date.now(), solved:s||0, correct:c||0});
+      localStorage.setItem(KEY,JSON.stringify(entries));
+      render();
+    }
+    dlg.close();
+    resetBtn.onclick();
+  };
+
+  skipBtn.onclick=()=>dlg.close();
+  clearBtn.onclick=()=>{
+    if(confirm("기록 전부 삭제?")){
+      entries=[];
+      localStorage.removeItem(KEY);
+      render();
+    }
+  };
+})();
+</script>
+</body>
+</html>
