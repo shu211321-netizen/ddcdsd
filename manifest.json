@@ -1,10 +1,10 @@
 {
-  "name": "Mini Auto Battler",
-  "short_name": "Battler",
+  "name": "문제풀이 타이머",
+  "short_name": "타이머",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#0b0e12",
-  "theme_color": "#0b0e12",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "icons": [
     {
       "src": "icon-192.png",
