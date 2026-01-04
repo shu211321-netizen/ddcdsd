@@ -58,14 +58,10 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
       <button id="start">시작</button>
       <button id="pause" class="sec" disabled>일시정지</button>
       <button id="resume" class="sec" disabled>재시작</button>
+      <button id="finish" class="sec" disabled>종료</button>
       <button id="reset" class="sec">리셋</button>
     </div>
-    <div class="row">
-      <button id="noise" class="sec">🔥 소리 켜기</button>
-    </div>
-    <div class="muted">
-      ※ 소리는 “소리 켜기” 버튼을 누를 때만 시작돼(브라우저 정책). 파일 없이 생성이라 차단 거의 없음.
-    </div>
+    <div class="muted">※ “종료”는 시간이 남아도 바로 끝내고 기록 입력으로 넘어감.</div>
   </div>
 
   <!-- 랭킹 -->
@@ -91,9 +87,11 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 
 <!-- 결과 입력 -->
 <dialog id="dlg">
-  <b>끝! 과목 + 정답/풀이 입력</b>
+  <b>기록 입력</b>
 
-  <div class="muted" style="margin-top:6px">과목(2개)</div>
+  <div class="muted" id="spentInfo" style="margin-top:6px"></div>
+
+  <div class="muted" style="margin-top:10px">과목(2개)</div>
   <div class="pills">
     <button id="math" class="pill on" type="button">수학</button>
     <button id="sci" class="pill" type="button">과학</button>
@@ -112,32 +110,35 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 
 <script>
 (() => {
-  const KEY = "rankData_webAudio_v1";
+  const KEY = "rankData_noSound_finish_v1";
   const $ = (id) => document.getElementById(id);
 
   const timeEl = $("time"), stateEl = $("state");
   const minEl = $("min"), secEl = $("sec");
-  const startBtn = $("start"), pauseBtn = $("pause"), resumeBtn = $("resume"), resetBtn = $("reset");
-  const noiseBtn = $("noise");
+  const startBtn = $("start"), pauseBtn = $("pause"), resumeBtn = $("resume"), resetBtn = $("reset"), finishBtn = $("finish");
 
   const rankPanel = $("rankPanel"), rankToggle = $("rankToggle"), clearBtn = $("clear");
   const tabAll = $("tabAll"), tabMath = $("tabMath"), tabSci = $("tabSci");
   const rankEl = $("rank");
 
-  const dlg = $("dlg"), scoreEl = $("score"), errEl = $("err");
+  const dlg = $("dlg"), scoreEl = $("score"), errEl = $("err"), spentInfo = $("spentInfo");
   const mathBtn = $("math"), sciBtn = $("sci");
   const saveBtn = $("save"), skipBtn = $("skip");
 
-  // ---------- 상태 ----------
   let subject = "수학";
-  let timer = null;
-  let remaining = 25 * 60;
-  let running = false;
-
   let filter = "전체";
+
   let data = JSON.parse(localStorage.getItem(KEY) || "[]");
 
-  // ---------- 유틸 ----------
+  // 타이머 상태
+  let timer = null;
+  let running = false;
+
+  let total = 25*60;     // 설정 시간
+  let remaining = total; // 남은 시간
+  let startedAt = null;  // 실제 시작 시각(ms)
+  let spent = 0;         // 누적 경과시간(초) - 일시정지 포함해서 합산
+
   const pad = (n) => String(n).padStart(2, "0");
   const fmt = (s) => `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
   const medal = (i) => i===1?"🥇":i===2?"🥈":i===3?"🥉":`#${i}`;
@@ -146,104 +147,94 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   function setButtons(){
     startBtn.disabled = running;
     pauseBtn.disabled = !running;
-    resumeBtn.disabled = running || remaining<=0;
+    resumeBtn.disabled = running || remaining<=0 || startedAt===null; // 시작한 적이 있어야 재시작 가능
+    finishBtn.disabled = (startedAt===null); // 시작한 적 없으면 종료 불가
     minEl.disabled = running;
     secEl.disabled = running;
   }
+
   function syncFromInputs(){
     const mm = Math.max(0, Math.min(300, parseInt(minEl.value || 0, 10) || 0));
     const ss = Math.max(0, Math.min(59, parseInt(secEl.value || 0, 10) || 0));
     minEl.value = mm; secEl.value = ss;
-    remaining = Math.max(1, mm * 60 + ss);
+    total = Math.max(1, mm*60 + ss);
+    remaining = total;
     drawTime();
   }
 
-  // ---------- WebAudio (외부파일 X) ----------
-  let noiseOn = false;
-  let audioCtx = null, master = null, noiseProc = null, noiseLP = null;
-  let crackGain = null, crackTimer = null;
+  function startTick(){
+    if (timer) clearInterval(timer);
+    running = true;
+    stateEl.textContent = "진행 중";
+    startedAt = startedAt ?? Date.now(); // 처음 시작 시각 저장(재시작 때는 그대로)
+    let last = Date.now();
 
-  function soundInit(){
-    if (audioCtx) return;
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    timer = setInterval(() => {
+      const now = Date.now();
+      const dt = (now - last) / 1000; // 초
+      last = now;
 
-    master = audioCtx.createGain();
-    master.gain.value = 0.55; // 전체 볼륨
-    master.connect(audioCtx.destination);
+      spent += dt;
+      remaining = Math.max(0, Math.round(total - spent));
 
-    // 노이즈: ScriptProcessor + lowpass (부드러운 백색/핑크 느낌)
-    const bufferSize = 4096;
-    noiseProc = audioCtx.createScriptProcessor(bufferSize, 1, 1);
-    noiseLP = audioCtx.createBiquadFilter();
-    noiseLP.type = "lowpass";
-    noiseLP.frequency.value = 1200;
+      drawTime();
 
-    noiseProc.onaudioprocess = (e) => {
-      const out = e.outputBuffer.getChannelData(0);
-      for (let i=0;i<out.length;i++){
-        out[i] = (Math.random()*2 - 1) * 0.22;
+      if (remaining <= 0) {
+        clearInterval(timer); timer = null;
+        running = false;
+        stateEl.textContent = "완료";
+        setButtons();
+        openRecordDialog("시간 종료");
       }
-    };
-
-    noiseProc.connect(noiseLP);
-    noiseLP.connect(master);
-
-    // 크랙(장작 팝)용 Gain
-    crackGain = audioCtx.createGain();
-    crackGain.gain.value = 0.35;
-    crackGain.connect(master);
+    }, 250);
+    setButtons();
   }
 
-  function crackPop(){
-    if (!audioCtx) return;
-    const t = audioCtx.currentTime;
-    const osc = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-
-    osc.type = "triangle";
-    osc.frequency.setValueAtTime(120 + Math.random()*240, t);
-
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.22 + Math.random()*0.12, t + 0.005);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09 + Math.random()*0.08);
-
-    osc.connect(g).connect(crackGain);
-    osc.start(t);
-    osc.stop(t + 0.14);
+  function pauseTimer(){
+    if (!running) return;
+    running = false;
+    stateEl.textContent = "일시정지";
+    if (timer) { clearInterval(timer); timer = null; }
+    setButtons();
   }
 
-  async function soundStart(){
-    soundInit();
-    try{
-      await audioCtx.resume(); // ✅ 버튼 클릭 안에서 호출되면 거의 무조건 됨
-      noiseOn = true;
-      noiseBtn.textContent = "🔕 소리 끄기";
-
-      // 팝 랜덤
-      if (crackTimer) clearInterval(crackTimer);
-      crackTimer = setInterval(() => {
-        if (Math.random() < 0.65) crackPop();
-        if (Math.random() < 0.18) crackPop();
-      }, 180);
-
-    } catch(e){
-      // 정말 드물게 실패하면 여기
-      alert("소리 권한이 막혔어. 크롬 사이트 설정에서 '소리 허용' 후 다시 눌러줘.");
-      noiseOn = false;
-      noiseBtn.textContent = "🔥 소리 켜기";
-    }
+  function finishTimer(){
+    if (timer) { clearInterval(timer); timer = null; }
+    running = false;
+    stateEl.textContent = "종료됨";
+    setButtons();
+    openRecordDialog("수동 종료");
   }
 
-  function soundStop(){
-    noiseOn = false;
-    noiseBtn.textContent = "🔥 소리 켜기";
-    if (crackTimer){ clearInterval(crackTimer); crackTimer = null; }
-    if (audioCtx){ audioCtx.suspend(); }
+  function resetTimer(){
+    if (timer) { clearInterval(timer); timer = null; }
+    running = false;
+    stateEl.textContent = "준비됨";
+    startedAt = null;
+    spent = 0;
+    syncFromInputs();
+    setButtons();
   }
 
-  noiseBtn.onclick = () => { if(!noiseOn) soundStart(); else soundStop(); };
+  function openRecordDialog(reason){
+    // 기록 입력창에 “경과시간” 보여주기
+    const spentSec = Math.max(0, Math.round(spent));
+    spentInfo.textContent = `기록 시간: ${fmt(spentSec)} (사유: ${reason})`;
+    errEl.style.display = "none";
+    scoreEl.value = "";
+    dlg.showModal();
+  }
 
-  // ---------- 랭킹 ----------
+  // 과목 선택
+  function pickSub(s){
+    subject = s;
+    mathBtn.classList.toggle("on", s==="수학");
+    sciBtn.classList.toggle("on", s==="과학");
+  }
+  mathBtn.onclick = () => pickSub("수학");
+  sciBtn.onclick  = () => pickSub("과학");
+
+  // 랭킹
   function setFilter(f){
     filter = f;
     tabAll.classList.toggle("on", f==="전체");
@@ -261,25 +252,27 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     if (filter !== "전체") arr = arr.filter(e => e.subject === filter);
 
     arr.sort((a,b)=>(b.acc-a.acc)||(b.solved-a.solved)||(b.ts-a.ts));
-    const top = arr.slice(0,10);
+    const top = arr.slice(0, 10);
+
     if(!top.length){
       rankEl.innerHTML = `<div class="muted">기록 없음. 저장해봐!</div>`;
       return;
     }
+
     top.forEach((e,i)=>{
-      const div = document.createElement("div");
-      div.className = "rankItem";
-      const d = new Date(e.ts);
-      const stamp = `${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-      div.innerHTML = `
+      const d=document.createElement("div");
+      d.className="rankItem";
+      const dt = new Date(e.ts);
+      const stamp = `${pad(dt.getMonth()+1)}/${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+      d.innerHTML = `
         <div class="badge">${medal(i+1)}</div>
         <div style="flex:1;min-width:0">
-          <div style="font-weight:900">${e.subject} · ${e.correct}/${e.solved}</div>
-          <div class="muted">${stamp}</div>
+          <div style="font-weight:900">${e.subject} · ${e.correct}/${e.solved} · ${e.acc}%</div>
+          <div class="muted">${stamp} · 공부 ${fmt(e.spentSec || 0)}</div>
         </div>
         <div style="font-weight:900">${e.acc}%</div>
       `;
-      rankEl.appendChild(div);
+      rankEl.appendChild(d);
     });
   }
 
@@ -296,68 +289,26 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     renderRank();
   };
 
-  // ---------- 과목 ----------
-  function pickSub(s){
-    subject = s;
-    mathBtn.classList.toggle("on", s==="수학");
-    sciBtn.classList.toggle("on", s==="과학");
-  }
-  mathBtn.onclick = () => pickSub("수학");
-  sciBtn.onclick  = () => pickSub("과학");
-
-  // ---------- 타이머 ----------
-  function startTick(){
-    if (timer) clearInterval(timer);
-    running = true;
-    stateEl.textContent = "진행 중";
-    setButtons();
-    // 소리가 켜져 있으면 유지(이미 resume 상태라 별도 play 필요 없음)
-    timer = setInterval(() => {
-      remaining--;
-      drawTime();
-      if(remaining<=0){
-        clearInterval(timer); timer=null;
-        running=false;
-        stateEl.textContent="완료";
-        setButtons();
-        soundStop(); // 완료 시 소리 끔 (원하면 유지로 바꿔줄 수 있음)
-        errEl.style.display="none";
-        scoreEl.value="";
-        dlg.showModal();
-      }
-    }, 1000);
-  }
-
+  // 버튼 이벤트
   startBtn.onclick = () => {
     if (running) return;
-    syncFromInputs();
+    // 시작이 처음이면 입력값을 total로 세팅
+    if (startedAt === null) {
+      const mm = Math.max(0, Math.min(300, parseInt(minEl.value || 0, 10) || 0));
+      const ss = Math.max(0, Math.min(59, parseInt(secEl.value || 0, 10) || 0));
+      total = Math.max(1, mm*60 + ss);
+      remaining = total;
+      spent = 0;
+    }
     startTick();
   };
 
-  pauseBtn.onclick = () => {
-    if (!running) return;
-    running=false;
-    stateEl.textContent="일시정지";
-    setButtons();
-    if (timer){ clearInterval(timer); timer=null; }
-    soundStop(); // 일시정지 시 소리도 멈춤 (원하면 유지로 바꿈)
-  };
+  pauseBtn.onclick = pauseTimer;
+  resumeBtn.onclick = startTick;
+  finishBtn.onclick = finishTimer;
+  resetBtn.onclick = resetTimer;
 
-  resumeBtn.onclick = () => {
-    if (running || remaining<=0) return;
-    startTick();
-  };
-
-  resetBtn.onclick = () => {
-    if (timer){ clearInterval(timer); timer=null; }
-    running=false;
-    stateEl.textContent="준비됨";
-    syncFromInputs();
-    soundStop();
-    setButtons();
-  };
-
-  // ---------- 저장 ----------
+  // 저장
   saveBtn.onclick = () => {
     const v = (scoreEl.value||"").trim();
     const m = v.match(/^(\d+)\s*\/\s*(\d+)$/);
@@ -374,17 +325,23 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
       return;
     }
     errEl.style.display="none";
+
     const acc = Math.round(correct/solved*100);
-    data.push({ ts: Date.now(), subject, correct, solved, acc });
+    const spentSec = Math.max(0, Math.round(spent));
+
+    data.push({ ts: Date.now(), subject, correct, solved, acc, spentSec });
     localStorage.setItem(KEY, JSON.stringify(data));
+
     dlg.close();
     renderRank();
+    // 기록 저장 후에는 다음 세션 위해 리셋
+    resetTimer();
   };
 
-  skipBtn.onclick = () => dlg.close();
+  skipBtn.onclick = () => { dlg.close(); resetTimer(); };
 
-  // ---------- 초기 ----------
-  drawTime();
+  // 초기
+  syncFromInputs();
   setButtons();
   renderRank();
 })();
