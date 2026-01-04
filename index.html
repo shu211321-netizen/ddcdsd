@@ -4,34 +4,37 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>문제풀이 타이머</title>
-
 <style>
 body{margin:0;font-family:system-ui;background:#fff}
-#app{min-height:100vh;display:flex;flex-direction:column;justify-content:flex-end;padding:14px}
+#app{min-height:100vh;display:flex;flex-direction:column;justify-content:flex-end;padding:14px;box-sizing:border-box}
 .card{border:1px solid #e6e6e6;border-radius:18px;padding:14px;margin-top:12px}
-.time{font-size:18vw;font-weight:900;text-align:center}
-.sub{text-align:center;color:#666}
-.row{display:flex;gap:10px;margin-top:10px}
-input,button{flex:1;padding:14px;font-size:18px;border-radius:14px;border:1px solid #ccc}
+.time{font-size:18vw;font-weight:900;text-align:center;letter-spacing:-.04em;line-height:1}
+.sub{text-align:center;color:#666;margin-top:6px}
+.row{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap}
+input,button{flex:1;padding:14px;font-size:18px;border-radius:14px;border:1px solid #ccc;box-sizing:border-box}
 button{background:#111;color:#fff;font-weight:900;border:none}
 .sec{background:#eee;color:#111}
-
 .pills{display:flex;gap:10px;margin-top:10px}
-.pill{flex:1;padding:12px;border-radius:14px;border:1px solid #ccc;font-weight:900}
-.pill.on{background:#111;color:#fff}
-
-.rank{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-.rankItem{display:flex;justify-content:space-between;border:1px solid #eee;border-radius:14px;padding:10px}
-.badge{font-weight:900}
-
-dialog{border:none;border-radius:18px;padding:16px;width:90vw}
+.pill{flex:1;padding:12px;border-radius:14px;border:1px solid #ccc;background:#fff;color:#111;font-weight:900}
+.pill.on{background:#111;color:#fff;border-color:#111}
+.panel{margin-top:10px;border:1px solid #eee;border-radius:14px;overflow:hidden}
+.panel-h{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#fafafa}
+.panel-h b{font-size:14px}
+.panel-h button{flex:0;padding:8px 10px;border-radius:12px;font-size:14px}
+.panel-b{padding:10px 12px;display:none}
+.show .panel-b{display:block}
+.rank{display:flex;flex-direction:column;gap:8px;max-height:28vh;overflow:auto}
+.rankItem{display:flex;justify-content:space-between;gap:10px;border:1px solid #eee;border-radius:14px;padding:10px 12px}
+.badge{font-weight:900;min-width:44px;text-align:center}
+.muted{color:#666;font-size:13px}
+dialog{border:none;border-radius:18px;padding:16px;width:90vw;max-width:420px}
 dialog::backdrop{background:rgba(0,0,0,.4)}
+.err{color:#b00020;font-size:13px;margin-top:8px;display:none}
 </style>
 </head>
 
 <body>
 <div id="app">
-
   <!-- 타이머 -->
   <div class="card">
     <div class="time" id="time">25:00</div>
@@ -41,127 +44,306 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   <!-- 컨트롤 -->
   <div class="card">
     <div class="row">
-      <input id="min" type="number" value="25">
-      <input id="sec" type="number" value="0">
+      <input id="min" type="number" value="25" min="0" placeholder="분">
+      <input id="sec" type="number" value="0" min="0" max="59" placeholder="초">
     </div>
     <div class="row">
       <button id="start">시작</button>
-      <button id="pause" class="sec">일시정지</button>
+      <button id="pause" class="sec" disabled>일시정지</button>
+      <button id="resume" class="sec" disabled>재시작</button>
       <button id="reset" class="sec">리셋</button>
     </div>
     <div class="row">
-      <button id="noise" class="sec">🔥 장작소리 켜기</button>
+      <button id="noise" class="sec">🔥 소리 켜기</button>
     </div>
+    <div class="muted">소리는 보안 때문에 “소리 켜기” 버튼을 한 번 눌러야 재생돼.</div>
   </div>
 
   <!-- 랭킹 -->
-  <div class="card">
-    <b>🏆 랭킹</b>
-    <div id="rank" class="rank"></div>
+  <div class="card panel" id="rankPanel">
+    <div class="panel-h">
+      <b>🏆 랭킹(정답률 기준)</b>
+      <div style="display:flex;gap:8px">
+        <button id="rankToggle" class="sec">펼치기</button>
+        <button id="clear" class="sec">삭제</button>
+      </div>
+    </div>
+    <div class="panel-b">
+      <div class="row" style="margin-top:0">
+        <button id="tabAll" class="sec">전체</button>
+        <button id="tabMath" class="sec">수학</button>
+        <button id="tabSci" class="sec">과학</button>
+      </div>
+      <div id="rank" class="rank" style="margin-top:10px"></div>
+      <div class="muted" style="margin-top:8px">정렬: 정답률↓ → 푼 개수↓ → 최신</div>
+    </div>
   </div>
-
 </div>
 
 <!-- 결과 입력 -->
 <dialog id="dlg">
-  <b>결과 입력</b>
+  <b>끝! 과목 + 정답/풀이 입력</b>
 
+  <div class="muted" style="margin-top:6px">과목(2개)</div>
   <div class="pills">
-    <button id="math" class="pill on">수학</button>
-    <button id="sci" class="pill">과학</button>
+    <button id="math" class="pill on" type="button">수학</button>
+    <button id="sci" class="pill" type="button">과학</button>
   </div>
 
-  <input id="score" placeholder="예: 18/25" style="width:100%;margin-top:10px">
+  <div class="muted" style="margin-top:10px">형식: (맞은개수)/(푼개수) 예) 18/25</div>
+  <input id="score" placeholder="예: 18/25" style="width:100%;margin-top:8px">
 
-  <div class="row">
-    <button id="save">저장</button>
+  <div class="err" id="err">형식이 잘못됐어. 예: 18/25</div>
+
+  <div class="row" style="margin-top:10px">
+    <button id="skip" class="sec" type="button">건너뛰기</button>
+    <button id="save" type="button">저장</button>
   </div>
 </dialog>
 
 <script>
-const timeEl = document.getElementById("time");
-const stateEl = document.getElementById("state");
-const minEl = document.getElementById("min");
-const secEl = document.getElementById("sec");
-const dlg = document.getElementById("dlg");
-const scoreEl = document.getElementById("score");
-const rankEl = document.getElementById("rank");
+(() => {
+  const KEY = "rankData_v2";
+  const $ = (id) => document.getElementById(id);
 
-let subject = "수학";
-let timer = null;
-let remain = 1500;
+  const timeEl = $("time"), stateEl = $("state");
+  const minEl = $("min"), secEl = $("sec");
+  const startBtn = $("start"), pauseBtn = $("pause"), resumeBtn = $("resume"), resetBtn = $("reset");
+  const noiseBtn = $("noise");
 
-const fire = new Audio("https://cdn.pixabay.com/audio/2022/03/15/audio_2b0b8d0c8b.mp3");
-fire.loop = true;
-let noiseOn = false;
+  const rankPanel = $("rankPanel"), rankToggle = $("rankToggle"), clearBtn = $("clear");
+  const tabAll = $("tabAll"), tabMath = $("tabMath"), tabSci = $("tabSci");
+  const rankEl = $("rank");
 
-const data = JSON.parse(localStorage.getItem("rankData")||"[]");
+  const dlg = $("dlg"), scoreEl = $("score"), errEl = $("err");
+  const mathBtn = $("math"), sciBtn = $("sci");
+  const saveBtn = $("save"), skipBtn = $("skip");
 
-function fmt(s){
-  return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
-}
+  // 상태
+  let subject = "수학";
+  let timer = null;
+  let remaining = 25 * 60;
+  let running = false;
 
-function renderRank(){
-  rankEl.innerHTML="";
-  data.sort((a,b)=>b.acc-a.acc || b.solved-a.solved);
-  data.slice(0,10).forEach((e,i)=>{
-    const div=document.createElement("div");
-    div.className="rankItem";
-    div.innerHTML=`<div class="badge">${i+1}</div>
-    <div>${e.subject} ${e.correct}/${e.solved}</div>
-    <div>${e.acc}%</div>`;
-    rankEl.appendChild(div);
-  });
-}
+  // 랭킹 필터
+  let filter = "전체";
 
-document.getElementById("start").onclick=()=>{
-  remain = minEl.value*60 + +secEl.value;
-  stateEl.textContent="진행 중";
-  if(noiseOn) fire.play();
-  timer=setInterval(()=>{
-    remain--;
-    timeEl.textContent=fmt(remain);
-    if(remain<=0){
-      clearInterval(timer);
-      fire.pause();
-      dlg.showModal();
+  // 소리 (장작)
+  const fire = new Audio("https://cdn.pixabay.com/audio/2022/03/15/audio_2b0b8d0c8b.mp3");
+  fire.loop = true;
+  fire.volume = 0.6;
+  let noiseOn = false;      // 사용자가 소리 켜기를 눌렀는지(언락 + ON)
+  let unlocked = false;     // 최초 재생 성공 여부
+
+  // 데이터
+  let data = JSON.parse(localStorage.getItem(KEY) || "[]");
+
+  const pad = (n) => String(n).padStart(2, "0");
+  const fmt = (s) => `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
+
+  const medal = (i) => i===1?"🥇":i===2?"🥈":i===3?"🥉":`#${i}`;
+
+  function setButtons() {
+    startBtn.disabled = running;        // 달리는 중이면 시작 막기
+    pauseBtn.disabled = !running;       // 달리는 중만 일시정지 가능
+    resumeBtn.disabled = running || remaining<=0; // 멈춘 상태(일시정지)에서만 재시작
+    minEl.disabled = running;
+    secEl.disabled = running;
+  }
+
+  function drawTime() {
+    timeEl.textContent = fmt(Math.max(0, remaining));
+  }
+
+  function syncFromInputs() {
+    const mm = Math.max(0, Math.min(300, parseInt(minEl.value || 0, 10) || 0));
+    const ss = Math.max(0, Math.min(59, parseInt(secEl.value || 0, 10) || 0));
+    minEl.value = mm; secEl.value = ss;
+    remaining = Math.max(1, mm * 60 + ss);
+    drawTime();
+  }
+
+  async function ensureSound() {
+    if (!noiseOn) return;
+    // 언락이 안 된 상태면, 타이머에서 play해도 막힐 수 있음 -> 버튼으로 먼저 언락 필요
+    // 그래도 혹시 이미 언락 됐으면 계속 재생
+    try {
+      await fire.play();
+      unlocked = true;
+    } catch (e) {
+      // 무음: 사용자가 소리 버튼을 다시 눌러야 함
     }
-  },1000);
-};
+  }
 
-document.getElementById("pause").onclick=()=>{
-  clearInterval(timer);
-  fire.pause();
-};
+  function stopSound() {
+    fire.pause();
+    fire.currentTime = 0;
+  }
 
-document.getElementById("reset").onclick=()=>{
-  clearInterval(timer);
-  fire.pause();
-  timeEl.textContent="25:00";
-  stateEl.textContent="준비됨";
-};
+  function startTick() {
+    if (timer) clearInterval(timer);
+    running = true;
+    stateEl.textContent = "진행 중";
+    setButtons();
+    if (noiseOn && unlocked) fire.play().catch(()=>{});
+    timer = setInterval(() => {
+      remaining--;
+      drawTime();
+      if (remaining <= 0) {
+        clearInterval(timer);
+        timer = null;
+        running = false;
+        stateEl.textContent = "완료";
+        setButtons();
+        stopSound();
+        errEl.style.display = "none";
+        scoreEl.value = "";
+        dlg.showModal();
+      }
+    }, 1000);
+  }
 
-document.getElementById("noise").onclick=()=>{
-  noiseOn=!noiseOn;
-  if(noiseOn){fire.play();event.target.textContent="🔕 장작소리 끄기";}
-  else{fire.pause();event.target.textContent="🔥 장작소리 켜기";}
-};
+  // 과목 선택(2개)
+  const pickSub = (s) => {
+    subject = s;
+    mathBtn.classList.toggle("on", s === "수학");
+    sciBtn.classList.toggle("on", s === "과학");
+  };
+  mathBtn.onclick = () => pickSub("수학");
+  sciBtn.onclick = () => pickSub("과학");
 
-document.getElementById("math").onclick=()=>{subject="수학";math.classList.add("on");sci.classList.remove("on");}
-document.getElementById("sci").onclick=()=>{subject="과학";sci.classList.add("on");math.classList.remove("on");}
+  // 랭킹 패널 토글
+  rankToggle.onclick = () => {
+    const on = !rankPanel.classList.contains("show");
+    rankPanel.classList.toggle("show", on);
+    rankToggle.textContent = on ? "접기" : "펼치기";
+  };
 
-document.getElementById("save").onclick=()=>{
-  const m=scoreEl.value.match(/(\d+)\/(\d+)/);
-  if(!m) return;
-  const correct=+m[1], solved=+m[2];
-  const acc=Math.round(correct/solved*100);
-  data.push({subject,correct,solved,acc});
-  localStorage.setItem("rankData",JSON.stringify(data));
-  dlg.close();
+  // 탭 필터
+  const setFilter = (f) => { filter = f; renderRank(); };
+  tabAll.onclick = () => setFilter("전체");
+  tabMath.onclick = () => setFilter("수학");
+  tabSci.onclick = () => setFilter("과학");
+
+  function renderRank() {
+    rankEl.innerHTML = "";
+    let arr = data.slice();
+    if (filter !== "전체") arr = arr.filter(e => e.subject === filter);
+
+    arr.sort((a, b) => (b.acc - a.acc) || (b.solved - a.solved) || (b.ts - a.ts));
+    const top = arr.slice(0, 10);
+
+    if (!top.length) {
+      rankEl.innerHTML = `<div class="muted">기록 없음. 저장해봐!</div>`;
+      return;
+    }
+
+    top.forEach((e, i) => {
+      const div = document.createElement("div");
+      div.className = "rankItem";
+      const d = new Date(e.ts);
+      const stamp = `${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      div.innerHTML = `
+        <div class="badge">${medal(i+1)}</div>
+        <div style="flex:1">
+          <div style="font-weight:900">${e.subject} · ${e.correct}/${e.solved}</div>
+          <div class="muted">${stamp}</div>
+        </div>
+        <div style="font-weight:900">${e.acc}%</div>
+      `;
+      rankEl.appendChild(div);
+    });
+  }
+
+  // 소리 버튼: 클릭 이벤트에서 "언락"까지 확실히 처리
+  noiseBtn.onclick = async (e) => {
+    if (!noiseOn) {
+      noiseOn = true;
+      try {
+        await fire.play();         // ✅ 사용자 제스처로 언락
+        unlocked = true;
+        e.target.textContent = "🔕 소리 끄기";
+      } catch (err) {
+        noiseOn = false;
+        unlocked = false;
+        alert("소리가 차단됨. 다시 한 번 눌러줘.");
+        e.target.textContent = "🔥 소리 켜기";
+      }
+    } else {
+      noiseOn = false;
+      e.target.textContent = "🔥 소리 켜기";
+      stopSound();
+    }
+  };
+
+  // 시작
+  startBtn.onclick = async () => {
+    if (running) return;
+    syncFromInputs();
+    await ensureSound(); // 가능하면 소리 준비
+    startTick();
+  };
+
+  // 일시정지
+  pauseBtn.onclick = () => {
+    if (!running) return;
+    running = false;
+    stateEl.textContent = "일시정지";
+    setButtons();
+    if (timer) { clearInterval(timer); timer = null; }
+    stopSound();
+  };
+
+  // 재시작(일시정지 후 이어서)
+  resumeBtn.onclick = async () => {
+    if (running || remaining <= 0) return;
+    await ensureSound();
+    startTick();
+  };
+
+  // 리셋
+  resetBtn.onclick = () => {
+    if (timer) { clearInterval(timer); timer = null; }
+    running = false;
+    stateEl.textContent = "준비됨";
+    syncFromInputs(); // 입력값 기준으로 리셋
+    stopSound();
+    setButtons();
+  };
+
+  // 저장
+  saveBtn.onclick = () => {
+    const v = (scoreEl.value || "").trim();
+    const m = v.match(/^(\d+)\s*\/\s*(\d+)$/);
+    if (!m) { errEl.textContent="형식이 잘못됐어. 예: 18/25"; errEl.style.display="block"; return; }
+    const correct = parseInt(m[1], 10), solved = parseInt(m[2], 10);
+    if (!(solved > 0 && correct >= 0 && correct <= solved)) {
+      errEl.textContent="숫자가 이상해. (0 ≤ 맞은개수 ≤ 푼개수)";
+      errEl.style.display="block"; return;
+    }
+    errEl.style.display = "none";
+    const acc = Math.round(correct / solved * 100);
+    data.push({ ts: Date.now(), subject, correct, solved, acc });
+    localStorage.setItem(KEY, JSON.stringify(data));
+    dlg.close();
+    renderRank();
+  };
+
+  skipBtn.onclick = () => dlg.close();
+
+  // 전체 삭제
+  clearBtn.onclick = () => {
+    if (!confirm("기록 전부 삭제할까?")) return;
+    data = [];
+    localStorage.setItem(KEY, "[]");
+    renderRank();
+  };
+
+  // 초기
+  drawTime();
+  setButtons();
   renderRank();
-};
-
-renderRank();
+})();
 </script>
 </body>
 </html>
