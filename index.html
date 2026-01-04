@@ -61,7 +61,10 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
       <button id="finish" class="sec" disabled>종료</button>
       <button id="reset" class="sec">리셋</button>
     </div>
-    <div class="muted">※ “종료”는 시간이 남아도 바로 끝내고 기록 입력으로 넘어감.</div>
+    <div class="row">
+      <button id="manual" class="sec">+ 기록 추가(수동)</button>
+    </div>
+    <div class="muted">※ “기록 추가(수동)”은 타이머랑 상관없이 바로 기록을 넣을 수 있음.</div>
   </div>
 
   <!-- 랭킹 -->
@@ -85,9 +88,9 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   </div>
 </div>
 
-<!-- 결과 입력 -->
+<!-- 기록 입력(자동/수동 공용) -->
 <dialog id="dlg">
-  <b>기록 입력</b>
+  <b id="dlgTitle">기록 입력</b>
 
   <div class="muted" id="spentInfo" style="margin-top:6px"></div>
 
@@ -97,47 +100,49 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     <button id="sci" class="pill" type="button">과학</button>
   </div>
 
-  <div class="muted" style="margin-top:10px">형식: (맞은개수)/(푼개수) 예) 18/25</div>
+  <div class="muted" style="margin-top:10px">정답 형식: (맞은개수)/(푼개수) 예) 18/25</div>
   <input id="score" placeholder="예: 18/25" style="width:100%;margin-top:8px">
+
+  <div class="muted" style="margin-top:10px">공부시간(분) — 수동 추가일 때만 직접 입력</div>
+  <input id="manualMin" type="number" min="0" placeholder="예: 25" style="width:100%;margin-top:8px">
 
   <div class="err" id="err">입력을 확인해줘.</div>
 
   <div class="row" style="margin-top:10px">
-    <button id="skip" class="sec" type="button">건너뛰기</button>
+    <button id="skip" class="sec" type="button">취소</button>
     <button id="save" type="button">저장</button>
   </div>
 </dialog>
 
 <script>
 (() => {
-  const KEY = "rankData_noSound_finish_v1";
+  const KEY = "rankData_manual_v1";
   const $ = (id) => document.getElementById(id);
 
   const timeEl = $("time"), stateEl = $("state");
   const minEl = $("min"), secEl = $("sec");
   const startBtn = $("start"), pauseBtn = $("pause"), resumeBtn = $("resume"), resetBtn = $("reset"), finishBtn = $("finish");
+  const manualBtn = $("manual");
 
   const rankPanel = $("rankPanel"), rankToggle = $("rankToggle"), clearBtn = $("clear");
   const tabAll = $("tabAll"), tabMath = $("tabMath"), tabSci = $("tabSci");
   const rankEl = $("rank");
 
-  const dlg = $("dlg"), scoreEl = $("score"), errEl = $("err"), spentInfo = $("spentInfo");
+  const dlg = $("dlg"), dlgTitle = $("dlgTitle");
+  const scoreEl = $("score"), errEl = $("err"), spentInfo = $("spentInfo"), manualMinEl = $("manualMin");
   const mathBtn = $("math"), sciBtn = $("sci");
   const saveBtn = $("save"), skipBtn = $("skip");
 
   let subject = "수학";
   let filter = "전체";
-
   let data = JSON.parse(localStorage.getItem(KEY) || "[]");
 
   // 타이머 상태
-  let timer = null;
-  let running = false;
+  let timer = null, running = false;
+  let total = 25*60, remaining = total, startedAt = null, spent = 0;
 
-  let total = 25*60;     // 설정 시간
-  let remaining = total; // 남은 시간
-  let startedAt = null;  // 실제 시작 시각(ms)
-  let spent = 0;         // 누적 경과시간(초) - 일시정지 포함해서 합산
+  // 다이얼로그 모드
+  let dlgMode = "auto"; // "auto"(타이머 종료/종료버튼), "manual"(수동추가)
 
   const pad = (n) => String(n).padStart(2, "0");
   const fmt = (s) => `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
@@ -147,8 +152,8 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   function setButtons(){
     startBtn.disabled = running;
     pauseBtn.disabled = !running;
-    resumeBtn.disabled = running || remaining<=0 || startedAt===null; // 시작한 적이 있어야 재시작 가능
-    finishBtn.disabled = (startedAt===null); // 시작한 적 없으면 종료 불가
+    resumeBtn.disabled = running || remaining<=0 || startedAt===null;
+    finishBtn.disabled = (startedAt===null);
     minEl.disabled = running;
     secEl.disabled = running;
   }
@@ -162,70 +167,6 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     drawTime();
   }
 
-  function startTick(){
-    if (timer) clearInterval(timer);
-    running = true;
-    stateEl.textContent = "진행 중";
-    startedAt = startedAt ?? Date.now(); // 처음 시작 시각 저장(재시작 때는 그대로)
-    let last = Date.now();
-
-    timer = setInterval(() => {
-      const now = Date.now();
-      const dt = (now - last) / 1000; // 초
-      last = now;
-
-      spent += dt;
-      remaining = Math.max(0, Math.round(total - spent));
-
-      drawTime();
-
-      if (remaining <= 0) {
-        clearInterval(timer); timer = null;
-        running = false;
-        stateEl.textContent = "완료";
-        setButtons();
-        openRecordDialog("시간 종료");
-      }
-    }, 250);
-    setButtons();
-  }
-
-  function pauseTimer(){
-    if (!running) return;
-    running = false;
-    stateEl.textContent = "일시정지";
-    if (timer) { clearInterval(timer); timer = null; }
-    setButtons();
-  }
-
-  function finishTimer(){
-    if (timer) { clearInterval(timer); timer = null; }
-    running = false;
-    stateEl.textContent = "종료됨";
-    setButtons();
-    openRecordDialog("수동 종료");
-  }
-
-  function resetTimer(){
-    if (timer) { clearInterval(timer); timer = null; }
-    running = false;
-    stateEl.textContent = "준비됨";
-    startedAt = null;
-    spent = 0;
-    syncFromInputs();
-    setButtons();
-  }
-
-  function openRecordDialog(reason){
-    // 기록 입력창에 “경과시간” 보여주기
-    const spentSec = Math.max(0, Math.round(spent));
-    spentInfo.textContent = `기록 시간: ${fmt(spentSec)} (사유: ${reason})`;
-    errEl.style.display = "none";
-    scoreEl.value = "";
-    dlg.showModal();
-  }
-
-  // 과목 선택
   function pickSub(s){
     subject = s;
     mathBtn.classList.toggle("on", s==="수학");
@@ -234,7 +175,79 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   mathBtn.onclick = () => pickSub("수학");
   sciBtn.onclick  = () => pickSub("과학");
 
-  // 랭킹
+  function openDlg(mode, reason){
+    dlgMode = mode;
+    errEl.style.display="none";
+    scoreEl.value="";
+    manualMinEl.value="";
+    if(mode==="manual"){
+      dlgTitle.textContent="기록 추가(수동)";
+      spentInfo.textContent="수동 기록: 공부시간(분)을 직접 적어줘.";
+      manualMinEl.style.display="block";
+    }else{
+      dlgTitle.textContent="기록 입력";
+      const spentSec = Math.max(0, Math.round(spent));
+      spentInfo.textContent = `기록 시간: ${fmt(spentSec)} (사유: ${reason})`;
+      manualMinEl.style.display="block"; // 표시하되 자동모드에선 비워도 됨
+      manualMinEl.placeholder = "자동이면 비워도 됨";
+    }
+    dlg.showModal();
+  }
+
+  function startTick(){
+    if (timer) clearInterval(timer);
+    running = true;
+    stateEl.textContent = "진행 중";
+    startedAt = startedAt ?? Date.now();
+    let last = Date.now();
+
+    timer = setInterval(() => {
+      const now = Date.now();
+      const dt = (now - last) / 1000;
+      last = now;
+
+      spent += dt;
+      remaining = Math.max(0, Math.round(total - spent));
+      drawTime();
+
+      if (remaining <= 0) {
+        clearInterval(timer); timer=null;
+        running=false;
+        stateEl.textContent = "완료";
+        setButtons();
+        openDlg("auto", "시간 종료");
+      }
+    }, 250);
+
+    setButtons();
+  }
+
+  function pauseTimer(){
+    if (!running) return;
+    running = false;
+    stateEl.textContent = "일시정지";
+    if (timer) { clearInterval(timer); timer=null; }
+    setButtons();
+  }
+
+  function finishTimer(){
+    if (timer) { clearInterval(timer); timer=null; }
+    running=false;
+    stateEl.textContent="종료됨";
+    setButtons();
+    openDlg("auto", "수동 종료");
+  }
+
+  function resetTimer(){
+    if (timer) { clearInterval(timer); timer=null; }
+    running=false;
+    stateEl.textContent="준비됨";
+    startedAt=null;
+    spent=0;
+    syncFromInputs();
+    setButtons();
+  }
+
   function setFilter(f){
     filter = f;
     tabAll.classList.toggle("on", f==="전체");
@@ -242,17 +255,17 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     tabSci.classList.toggle("on", f==="과학");
     renderRank();
   }
-  tabAll.onclick = () => setFilter("전체");
-  tabMath.onclick = () => setFilter("수학");
-  tabSci.onclick  = () => setFilter("과학");
+  tabAll.onclick=()=>setFilter("전체");
+  tabMath.onclick=()=>setFilter("수학");
+  tabSci.onclick=()=>setFilter("과학");
 
   function renderRank(){
-    rankEl.innerHTML = "";
+    rankEl.innerHTML="";
     let arr = data.slice();
-    if (filter !== "전체") arr = arr.filter(e => e.subject === filter);
+    if(filter!=="전체") arr = arr.filter(e=>e.subject===filter);
 
     arr.sort((a,b)=>(b.acc-a.acc)||(b.solved-a.solved)||(b.ts-a.ts));
-    const top = arr.slice(0, 10);
+    const top = arr.slice(0,10);
 
     if(!top.length){
       rankEl.innerHTML = `<div class="muted">기록 없음. 저장해봐!</div>`;
@@ -260,85 +273,90 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     }
 
     top.forEach((e,i)=>{
-      const d=document.createElement("div");
-      d.className="rankItem";
-      const dt = new Date(e.ts);
-      const stamp = `${pad(dt.getMonth()+1)}/${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-      d.innerHTML = `
+      const div=document.createElement("div");
+      div.className="rankItem";
+      const d=new Date(e.ts);
+      const stamp=`${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      div.innerHTML = `
         <div class="badge">${medal(i+1)}</div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:900">${e.subject} · ${e.correct}/${e.solved} · ${e.acc}%</div>
-          <div class="muted">${stamp} · 공부 ${fmt(e.spentSec || 0)}</div>
+          <div class="muted">${stamp} · 공부 ${fmt(e.spentSec||0)}</div>
         </div>
         <div style="font-weight:900">${e.acc}%</div>
       `;
-      rankEl.appendChild(d);
+      rankEl.appendChild(div);
     });
   }
 
-  rankToggle.onclick = () => {
-    const on = !rankPanel.classList.contains("show");
-    rankPanel.classList.toggle("show", on);
-    rankToggle.textContent = on ? "접기" : "펼치기";
+  rankToggle.onclick=()=>{
+    const on=!rankPanel.classList.contains("show");
+    rankPanel.classList.toggle("show",on);
+    rankToggle.textContent=on?"접기":"펼치기";
   };
 
-  clearBtn.onclick = () => {
+  clearBtn.onclick=()=>{
     if(!confirm("기록 전부 삭제할까?")) return;
-    data = [];
-    localStorage.setItem(KEY, "[]");
+    data=[];
+    localStorage.setItem(KEY,"[]");
     renderRank();
   };
 
   // 버튼 이벤트
-  startBtn.onclick = () => {
-    if (running) return;
-    // 시작이 처음이면 입력값을 total로 세팅
-    if (startedAt === null) {
-      const mm = Math.max(0, Math.min(300, parseInt(minEl.value || 0, 10) || 0));
-      const ss = Math.max(0, Math.min(59, parseInt(secEl.value || 0, 10) || 0));
+  startBtn.onclick=()=>{
+    if(running) return;
+    if(startedAt===null){
+      const mm = Math.max(0, Math.min(300, parseInt(minEl.value||0,10)||0));
+      const ss = Math.max(0, Math.min(59, parseInt(secEl.value||0,10)||0));
       total = Math.max(1, mm*60 + ss);
       remaining = total;
       spent = 0;
     }
     startTick();
   };
+  pauseBtn.onclick=pauseTimer;
+  resumeBtn.onclick=startTick;
+  finishBtn.onclick=finishTimer;
+  resetBtn.onclick=resetTimer;
 
-  pauseBtn.onclick = pauseTimer;
-  resumeBtn.onclick = startTick;
-  finishBtn.onclick = finishTimer;
-  resetBtn.onclick = resetTimer;
+  manualBtn.onclick=()=>openDlg("manual","");
 
   // 저장
-  saveBtn.onclick = () => {
-    const v = (scoreEl.value||"").trim();
-    const m = v.match(/^(\d+)\s*\/\s*(\d+)$/);
-    if(!m){
-      errEl.textContent = "형식이 잘못됐어. 예: 18/25";
-      errEl.style.display="block";
-      return;
-    }
-    const correct = parseInt(m[1],10);
-    const solved  = parseInt(m[2],10);
+  saveBtn.onclick=()=>{
+    const v=(scoreEl.value||"").trim();
+    const m=v.match(/^(\d+)\s*\/\s*(\d+)$/);
+    if(!m){ errEl.textContent="형식이 잘못됐어. 예: 18/25"; errEl.style.display="block"; return; }
+    const correct=parseInt(m[1],10), solved=parseInt(m[2],10);
     if(!(solved>0 && correct>=0 && correct<=solved)){
-      errEl.textContent = "숫자가 이상해. (0 ≤ 맞은개수 ≤ 푼개수)";
-      errEl.style.display="block";
-      return;
+      errEl.textContent="숫자가 이상해. (0 ≤ 맞은개수 ≤ 푼개수)";
+      errEl.style.display="block"; return;
     }
-    errEl.style.display="none";
 
-    const acc = Math.round(correct/solved*100);
-    const spentSec = Math.max(0, Math.round(spent));
+    let spentSec;
+    if(dlgMode==="manual"){
+      const mm = parseInt(manualMinEl.value||"",10);
+      if(!(mm>=0)){ errEl.textContent="수동 기록은 공부시간(분)을 숫자로 적어줘."; errEl.style.display="block"; return; }
+      spentSec = mm*60;
+    }else{
+      // 자동 기록은 타이머 경과시간
+      spentSec = Math.max(0, Math.round(spent));
+      // 사용자가 manualMin에 숫자를 넣었으면 그걸로 덮어쓰기(원하면)
+      const mm = parseInt(manualMinEl.value||"",10);
+      if(mm>=0) spentSec = mm*60;
+    }
 
-    data.push({ ts: Date.now(), subject, correct, solved, acc, spentSec });
-    localStorage.setItem(KEY, JSON.stringify(data));
+    const acc=Math.round(correct/solved*100);
+    data.push({ts:Date.now(),subject,correct,solved,acc,spentSec});
+    localStorage.setItem(KEY,JSON.stringify(data));
 
     dlg.close();
     renderRank();
-    // 기록 저장 후에는 다음 세션 위해 리셋
-    resetTimer();
+
+    // 자동 기록이면 타이머 리셋
+    if(dlgMode!=="manual") resetTimer();
   };
 
-  skipBtn.onclick = () => { dlg.close(); resetTimer(); };
+  skipBtn.onclick=()=>{ dlg.close(); if(dlgMode!=="manual") resetTimer(); };
 
   // 초기
   syncFromInputs();
