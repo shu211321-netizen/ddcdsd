@@ -1,251 +1,167 @@
-<!doctype html><html lang="ko"><meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>문제풀이 타이머</title>
 
 <style>
 body{margin:0;font-family:system-ui;background:#fff}
-#app{min-height:100vh;display:flex;flex-direction:column;justify-content:flex-end;padding:14px;box-sizing:border-box}
+#app{min-height:100vh;display:flex;flex-direction:column;justify-content:flex-end;padding:14px}
 .card{border:1px solid #e6e6e6;border-radius:18px;padding:14px;margin-top:12px}
-.time{font-size:18vw;font-weight:900;text-align:center;letter-spacing:-.04em;line-height:1}
-.sub{text-align:center;color:#666;margin-top:6px}
-.ui{display:block}
-.focus .ui{display:none}
-.focus.showui .ui{display:block}
-.row{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap}
-input,button{flex:1;font-size:18px;padding:14px;border-radius:14px;border:1px solid #ccc;box-sizing:border-box}
-button{border:none;background:#111;color:#fff;font-weight:800}
+.time{font-size:18vw;font-weight:900;text-align:center}
+.sub{text-align:center;color:#666}
+.row{display:flex;gap:10px;margin-top:10px}
+input,button{flex:1;padding:14px;font-size:18px;border-radius:14px;border:1px solid #ccc}
+button{background:#111;color:#fff;font-weight:900;border:none}
 .sec{background:#eee;color:#111}
-#toggle{position:fixed;right:14px;bottom:14px;border-radius:999px;padding:12px 16px;display:none;box-shadow:0 6px 18px rgba(0,0,0,.12)}
-.focus #toggle{display:block}
-
-.kpi{display:flex;gap:10px;margin-top:10px}
-.kpi .box{flex:1;border:1px solid #eee;border-radius:14px;padding:12px;text-align:center}
-.kpi .lab{color:#666;font-size:13px}
-.kpi .val{font-size:26px;font-weight:900;margin-top:2px}
-
-.panel{margin-top:10px;border:1px solid #eee;border-radius:14px;overflow:hidden}
-.panel-h{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#fafafa}
-.panel-h b{font-size:14px}
-.panel-h button{flex:0;padding:8px 10px;border-radius:12px;font-size:14px}
-.panel-b{padding:10px 12px;display:none}
-.showrec .panel-b{display:block}
-
-.muted{color:#666;font-size:13px}
-dialog{border:none;border-radius:18px;padding:16px;width:90vw;max-width:420px}
-dialog::backdrop{background:rgba(0,0,0,.4)}
-.err{color:#b00020;font-size:13px;margin-top:8px;display:none}
 
 .pills{display:flex;gap:10px;margin-top:10px}
-.pill{flex:1;padding:12px;border-radius:14px;border:1px solid #ccc;background:#fff;color:#111;font-weight:900}
-.pill.on{background:#111;color:#fff;border-color:#111}
+.pill{flex:1;padding:12px;border-radius:14px;border:1px solid #ccc;font-weight:900}
+.pill.on{background:#111;color:#fff}
 
-/* 랭킹 UI */
-.rankTabs{display:flex;gap:8px;margin:10px 0}
-.tab{flex:1;padding:10px;border-radius:12px;border:1px solid #ddd;background:#fff;color:#111;font-weight:900;font-size:14px}
-.tab.on{background:#111;color:#fff;border-color:#111}
-.leader{display:flex;flex-direction:column;gap:8px;max-height:28vh;overflow:auto}
-.rowRank{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid #eee;border-radius:14px}
-.rleft{display:flex;align-items:center;gap:10px;min-width:0}
-.badge{font-weight:900;min-width:44px;text-align:center}
-.tag{font-size:12px;border:1px solid #eee;border-radius:999px;padding:4px 8px;white-space:nowrap}
-.mainTxt{font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46vw}
-.rsub{font-size:12px;color:#666;margin-top:2px}
-.rright{text-align:right;font-weight:900}
-.rright .subp{font-size:12px;color:#666;font-weight:700;margin-top:2px}
+.rank{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.rankItem{display:flex;justify-content:space-between;border:1px solid #eee;border-radius:14px;padding:10px}
+.badge{font-weight:900}
+
+dialog{border:none;border-radius:18px;padding:16px;width:90vw}
+dialog::backdrop{background:rgba(0,0,0,.4)}
 </style>
+</head>
 
+<body>
 <div id="app">
+
   <!-- 타이머 -->
   <div class="card">
-    <div class="time" id="t">25:00</div>
+    <div class="time" id="time">25:00</div>
     <div class="sub" id="state">준비됨</div>
   </div>
 
-  <!-- UI -->
-  <div class="card ui" id="ui">
+  <!-- 컨트롤 -->
+  <div class="card">
     <div class="row">
-      <input id="m" type="number" value="25" min="0" placeholder="분">
-      <input id="s" type="number" value="0" min="0" max="59" placeholder="초">
+      <input id="min" type="number" value="25">
+      <input id="sec" type="number" value="0">
     </div>
     <div class="row">
       <button id="start">시작</button>
-      <button id="pause" class="sec" disabled>일시정지</button>
+      <button id="pause" class="sec">일시정지</button>
       <button id="reset" class="sec">리셋</button>
     </div>
-
-    <div class="kpi">
-      <div class="box"><div class="lab">오늘 푼 개수</div><div class="val" id="todaySolved">0</div></div>
-      <div class="box"><div class="lab">전체 푼 개수</div><div class="val" id="allSolved">0</div></div>
-    </div>
-
-    <!-- 랭킹 패널 -->
-    <div class="panel" id="rankPanel">
-      <div class="panel-h">
-        <b>🏆 랭킹(정답률 기준)</b>
-        <div style="display:flex;gap:8px">
-          <button id="rankToggle" class="sec">펼치기</button>
-          <button id="clear" class="sec">삭제</button>
-        </div>
-      </div>
-
-      <div class="panel-b" id="rankBody">
-        <div class="rankTabs">
-          <button class="tab on" id="tabAll" type="button">전체</button>
-          <button class="tab" id="tabMath" type="button">수학</button>
-          <button class="tab" id="tabSci" type="button">과학</button>
-        </div>
-        <div class="leader" id="leader"></div>
-        <div class="muted" style="margin-top:8px">정렬: 정답률↓ → 푼 개수↓ → 최신</div>
-      </div>
+    <div class="row">
+      <button id="noise" class="sec">🔥 장작소리 켜기</button>
     </div>
   </div>
 
-  <button id="toggle">UI 보기</button>
+  <!-- 랭킹 -->
+  <div class="card">
+    <b>🏆 랭킹</b>
+    <div id="rank" class="rank"></div>
+  </div>
+
 </div>
 
-<!-- 종료 입력 -->
+<!-- 결과 입력 -->
 <dialog id="dlg">
-  <b>끝! 과목 + 정답/풀이 입력</b>
+  <b>결과 입력</b>
 
-  <div class="muted" style="margin-top:6px">과목(2개)</div>
   <div class="pills">
-    <button id="subMath" class="pill on" type="button">수학</button>
-    <button id="subSci" class="pill" type="button">과학</button>
+    <button id="math" class="pill on">수학</button>
+    <button id="sci" class="pill">과학</button>
   </div>
 
-  <div class="muted" style="margin-top:10px">형식: (맞은개수)/(푼개수) 예) 18/25</div>
-  <input id="score" type="text" placeholder="예: 18/25" style="width:100%;margin-top:8px">
-  <div class="err" id="err">입력을 확인해줘.</div>
+  <input id="score" placeholder="예: 18/25" style="width:100%;margin-top:10px">
 
-  <div class="row" style="margin-top:10px">
-    <button id="skip" class="sec" type="button">건너뛰기</button>
-    <button id="save" type="button">저장</button>
+  <div class="row">
+    <button id="save">저장</button>
   </div>
 </dialog>
 
 <script>
-(()=>{const KEY="solve_timer_entries_rank_v1",A=id=>document.getElementById(id);
-const app=A("app"),t=A("t"),state=A("state"),m=A("m"),s=A("s"),
-start=A("start"),pause=A("pause"),reset=A("reset"),toggle=A("toggle"),
-dlg=A("dlg"),score=A("score"),err=A("err"),save=A("save"),skip=A("skip"),
-todaySolved=A("todaySolved"),allSolved=A("allSolved"),
-clear=A("clear"),
-rankPanel=A("rankPanel"),rankToggle=A("rankToggle"),
-leader=A("leader"),
-tabAll=A("tabAll"),tabMath=A("tabMath"),tabSci=A("tabSci"),
-subMath=A("subMath"),subSci=A("subSci");
+const timeEl = document.getElementById("time");
+const stateEl = document.getElementById("state");
+const minEl = document.getElementById("min");
+const secEl = document.getElementById("sec");
+const dlg = document.getElementById("dlg");
+const scoreEl = document.getElementById("score");
+const rankEl = document.getElementById("rank");
 
-let data=JSON.parse(localStorage.getItem(KEY)||"[]");
-let dur=1500,rem=dur,timer=null,uiOpen=false,lastDur=dur,subject="수학";
-let rankFilter="전체";
+let subject = "수학";
+let timer = null;
+let remain = 1500;
 
-const pad=n=>String(n).padStart(2,"0");
-const fmt=x=>`${pad(x/60|0)}:${pad(x%60)}`;
-const dayKey=ts=>{const d=new Date(ts);return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;}
-const stamp=ts=>{const d=new Date(ts);return `${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;}
+const fire = new Audio("https://cdn.pixabay.com/audio/2022/03/15/audio_2b0b8d0c8b.mp3");
+fire.loop = true;
+let noiseOn = false;
 
-const sync=()=>{const mm=Math.max(0,Math.min(300,parseInt(m.value||25,10)||0));
-const ss=Math.max(0,Math.min(59,parseInt(s.value||0,10)||0));m.value=mm;s.value=ss;
-dur=Math.max(1,mm*60+ss); if(!timer) rem=dur;
-t.textContent=fmt(rem); t.style.color=rem<=60?"#b00020":"#111";}
+const data = JSON.parse(localStorage.getItem("rankData")||"[]");
 
-const setFocus=on=>{app.classList.toggle("focus",on);app.classList.remove("showui");
-toggle.textContent="UI 보기";uiOpen=false;
-if(on){rankPanel.classList.remove("showrec");rankToggle.textContent="펼치기";}
+function fmt(s){
+  return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
 }
-toggle.onclick=()=>{uiOpen=!uiOpen;app.classList.toggle("showui",uiOpen);
-toggle.textContent=uiOpen?"UI 숨김":"UI 보기";}
 
-rankToggle.onclick=()=>{const on=!rankPanel.classList.contains("showrec");
-rankPanel.classList.toggle("showrec",on);rankToggle.textContent=on?"접기":"펼치기";}
-
-const pickSub=(x)=>{subject=x;subMath.classList.toggle("on",x==="수학");subSci.classList.toggle("on",x==="과학");}
-subMath.onclick=()=>pickSub("수학");
-subSci.onclick=()=>pickSub("과학");
-
-const setTab=(x)=>{
-  rankFilter=x;
-  tabAll.classList.toggle("on",x==="전체");
-  tabMath.classList.toggle("on",x==="수학");
-  tabSci.classList.toggle("on",x==="과학");
-  renderLeader();
-};
-tabAll.onclick=()=>setTab("전체");
-tabMath.onclick=()=>setTab("수학");
-tabSci.onclick=()=>setTab("과학");
-
-const renderKPI=()=>{
-  const td=dayKey(Date.now()); let Tsol=0,Asol=0;
-  for(const e of data){Asol+=e.solved||0;if(dayKey(e.ts)===td)Tsol+=e.solved||0}
-  todaySolved.textContent=Tsol; allSolved.textContent=Asol;
-};
-
-const medal=(i)=> i===1?"🥇":i===2?"🥈":i===3?"🥉":`#${i}`;
-const renderLeader=()=>{
-  leader.innerHTML="";
-  let arr = data.slice();
-  if(rankFilter!=="전체") arr = arr.filter(e=>e.subject===rankFilter);
-
-  arr.sort((a,b)=>{
-    if(b.acc!==a.acc) return b.acc-a.acc;
-    if(b.solved!==a.solved) return b.solved-a.solved;
-    return b.ts-a.ts;
-  });
-
-  const top = arr.slice(0, 30);
-  if(!top.length){
-    leader.innerHTML = `<div class="muted">기록 없음. 타이머 끝내고 저장해봐!</div>`;
-    return;
-  }
-
-  top.forEach((e,idx)=>{
-    const r = idx+1;
+function renderRank(){
+  rankEl.innerHTML="";
+  data.sort((a,b)=>b.acc-a.acc || b.solved-a.solved);
+  data.slice(0,10).forEach((e,i)=>{
     const div=document.createElement("div");
-    div.className="rowRank";
-    div.innerHTML = `
-      <div class="rleft">
-        <div class="badge">${medal(r)}</div>
-        <div style="min-width:0">
-          <div class="mainTxt">${e.correct}/${e.solved} (${e.acc}%)</div>
-          <div class="rsub">${e.subject} · ${stamp(e.ts)} · ${fmt(e.duration)}</div>
-        </div>
-      </div>
-      <div class="rright">
-        ${e.acc}%
-        <div class="subp">${e.correct}/${e.solved}</div>
-      </div>`;
-    leader.appendChild(div);
+    div.className="rankItem";
+    div.innerHTML=`<div class="badge">${i+1}</div>
+    <div>${e.subject} ${e.correct}/${e.solved}</div>
+    <div>${e.acc}%</div>`;
+    rankEl.appendChild(div);
   });
+}
+
+document.getElementById("start").onclick=()=>{
+  remain = minEl.value*60 + +secEl.value;
+  stateEl.textContent="진행 중";
+  if(noiseOn) fire.play();
+  timer=setInterval(()=>{
+    remain--;
+    timeEl.textContent=fmt(remain);
+    if(remain<=0){
+      clearInterval(timer);
+      fire.pause();
+      dlg.showModal();
+    }
+  },1000);
 };
 
-const render=()=>{renderKPI(); renderLeader();};
+document.getElementById("pause").onclick=()=>{
+  clearInterval(timer);
+  fire.pause();
+};
 
-start.onclick=()=>{if(timer)return;sync();lastDur=dur;setFocus(true);
-start.disabled=true;pause.disabled=false;m.disabled=true;s.disabled=true;state.textContent="진행 중...";
-timer=setInterval(()=>{rem--;t.textContent=fmt(Math.max(0,rem));t.style.color=rem<=60?"#b00020":"#111";
-if(rem<=0){clearInterval(timer);timer=null;start.disabled=false;pause.disabled=true;m.disabled=false;s.disabled=false;
-setFocus(false);state.textContent="준비됨";err.style.display="none";score.value="";pickSub(subject||"수학");dlg.showModal();}},1000);}
+document.getElementById("reset").onclick=()=>{
+  clearInterval(timer);
+  fire.pause();
+  timeEl.textContent="25:00";
+  stateEl.textContent="준비됨";
+};
 
-pause.onclick=()=>{if(!timer)return;clearInterval(timer);timer=null;
-start.disabled=false;pause.disabled=true;m.disabled=false;s.disabled=false;state.textContent="일시정지";}
+document.getElementById("noise").onclick=()=>{
+  noiseOn=!noiseOn;
+  if(noiseOn){fire.play();event.target.textContent="🔕 장작소리 끄기";}
+  else{fire.pause();event.target.textContent="🔥 장작소리 켜기";}
+};
 
-reset.onclick=()=>{if(timer){clearInterval(timer);timer=null}
-start.disabled=false;pause.disabled=true;m.disabled=false;s.disabled=false;state.textContent="준비됨";setFocus(false);sync();}
+document.getElementById("math").onclick=()=>{subject="수학";math.classList.add("on");sci.classList.remove("on");}
+document.getElementById("sci").onclick=()=>{subject="과학";sci.classList.add("on");math.classList.remove("on");}
 
-save.onclick=()=>{err.style.display="none";
-const v=score.value.trim(); const mm=v.match(/^(\d+)\s*\/\s*(\d+)$/);
-if(!mm){err.textContent="형식이 잘못됐어. 예: 18/25";err.style.display="block";return;}
-const correct=parseInt(mm[1],10), solved=parseInt(mm[2],10);
-if(!(solved>0 && correct>=0 && correct<=solved)){err.textContent="숫자가 이상해. (0 ≤ 맞은개수 ≤ 푼개수)";err.style.display="block";return;}
-const acc=Math.round(correct/solved*100);
-data.push({ts:Date.now(),subject,correct,solved,acc,duration:lastDur});
-localStorage.setItem(KEY,JSON.stringify(data));
-dlg.close();render();reset.onclick();}
+document.getElementById("save").onclick=()=>{
+  const m=scoreEl.value.match(/(\d+)\/(\d+)/);
+  if(!m) return;
+  const correct=+m[1], solved=+m[2];
+  const acc=Math.round(correct/solved*100);
+  data.push({subject,correct,solved,acc});
+  localStorage.setItem("rankData",JSON.stringify(data));
+  dlg.close();
+  renderRank();
+};
 
-skip.onclick=()=>{dlg.close();reset.onclick();}
-clear.onclick=()=>{if(confirm("기록 전부 삭제할까?")){data=[];localStorage.setItem(KEY,"[]");render();}}
-
-sync();render();
-})();
+renderRank();
 </script>
+</body>
 </html>
