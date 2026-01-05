@@ -42,13 +42,11 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 
 <body>
 <div id="app">
-  <!-- 타이머 -->
   <div class="card">
     <div class="time" id="time">25:00</div>
     <div class="sub" id="state">준비됨</div>
   </div>
 
-  <!-- 컨트롤 -->
   <div class="card">
     <div class="row">
       <input id="min" type="number" value="25" min="0" placeholder="분">
@@ -64,10 +62,9 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     <div class="row">
       <button id="manual" class="sec">+ 기록 추가(수동)</button>
     </div>
-    <div class="muted">※ “기록 추가(수동)”은 타이머랑 상관없이 바로 기록을 넣을 수 있음.</div>
+    <div class="muted">※ 다른 앱을 열어도 “시간은 계속 흐른 걸로” 계산됨(시각 기준).</div>
   </div>
 
-  <!-- 랭킹 -->
   <div class="panel" id="rankPanel">
     <div class="panel-h">
       <b>🏆 랭킹(정답률 기준)</b>
@@ -88,7 +85,6 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   </div>
 </div>
 
-<!-- 기록 입력(자동/수동 공용) -->
 <dialog id="dlg">
   <b id="dlgTitle">기록 입력</b>
 
@@ -116,7 +112,10 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 
 <script>
 (() => {
-  const KEY = "rankData_manual_v1";
+  // ====== 저장 키 ======
+  const DATA_KEY = "rankData_manual_v2";
+  const TIMER_KEY = "timerState_v1"; // 백그라운드용 상태 저장
+
   const $ = (id) => document.getElementById(id);
 
   const timeEl = $("time"), stateEl = $("state");
@@ -133,40 +132,116 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   const mathBtn = $("math"), sciBtn = $("sci");
   const saveBtn = $("save"), skipBtn = $("skip");
 
+  // ====== 데이터 ======
   let subject = "수학";
   let filter = "전체";
-  let data = JSON.parse(localStorage.getItem(KEY) || "[]");
+  let data = JSON.parse(localStorage.getItem(DATA_KEY) || "[]");
 
-  // 타이머 상태
-  let timer = null, running = false;
-  let total = 25*60, remaining = total, startedAt = null, spent = 0;
+  // ====== 타이머 상태(시각 기반) ======
+  // totalSec: 설정된 전체 시간
+  // startTs: 달리기 시작한 시각(ms) (running일 때만 의미)
+  // elapsedBeforeSec: 일시정지로 누적된 경과시간(초)
+  // running: 현재 진행중 여부
+  let totalSec = 25*60;
+  let startTs = null;
+  let elapsedBeforeSec = 0;
+  let running = false;
 
-  // 다이얼로그 모드
-  let dlgMode = "auto"; // "auto"(타이머 종료/종료버튼), "manual"(수동추가)
+  let uiTick = null; // 화면 업데이트용(백그라운드에서 계속 안 돌아도 됨)
 
+  // ====== 다이얼로그 모드 ======
+  let dlgMode = "auto"; // "auto" | "manual"
+
+  // ====== 유틸 ======
   const pad = (n) => String(n).padStart(2, "0");
   const fmt = (s) => `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
   const medal = (i) => i===1?"🥇":i===2?"🥈":i===3?"🥉":`#${i}`;
 
-  function drawTime(){ timeEl.textContent = fmt(Math.max(0, remaining)); }
+  function nowMs(){ return Date.now(); }
+
+  function getElapsedSec(){
+    if(!running) return elapsedBeforeSec;
+    return elapsedBeforeSec + (nowMs() - startTs)/1000;
+  }
+
+  function getRemainingSec(){
+    const rem = totalSec - getElapsedSec();
+    return Math.max(0, Math.round(rem));
+  }
+
+  function drawTime(){
+    timeEl.textContent = fmt(getRemainingSec());
+  }
+
   function setButtons(){
     startBtn.disabled = running;
     pauseBtn.disabled = !running;
-    resumeBtn.disabled = running || remaining<=0 || startedAt===null;
-    finishBtn.disabled = (startedAt===null);
+    // 재시작: 일시정지 상태(=running false)이고, 한번이라도 시작한 상태
+    resumeBtn.disabled = running || (startTs===null && elapsedBeforeSec===0) || getRemainingSec()<=0;
+    finishBtn.disabled = (startTs===null && elapsedBeforeSec===0); // 시작한 적 없으면 종료 불가
     minEl.disabled = running;
     secEl.disabled = running;
   }
 
-  function syncFromInputs(){
-    const mm = Math.max(0, Math.min(300, parseInt(minEl.value || 0, 10) || 0));
-    const ss = Math.max(0, Math.min(59, parseInt(secEl.value || 0, 10) || 0));
-    minEl.value = mm; secEl.value = ss;
-    total = Math.max(1, mm*60 + ss);
-    remaining = total;
-    drawTime();
+  function saveTimerState(){
+    const st = { totalSec, startTs, elapsedBeforeSec, running };
+    localStorage.setItem(TIMER_KEY, JSON.stringify(st));
   }
 
+  function loadTimerState(){
+    const raw = localStorage.getItem(TIMER_KEY);
+    if(!raw) return false;
+    try{
+      const st = JSON.parse(raw);
+      if(typeof st.totalSec!=="number") return false;
+      totalSec = st.totalSec;
+      startTs = st.startTs;
+      elapsedBeforeSec = st.elapsedBeforeSec || 0;
+      running = !!st.running;
+
+      // running인데 너무 오래 지나서 0이면 자동 종료 처리
+      if(getRemainingSec()<=0){
+        running = false;
+        // elapsed를 total로 맞춰서 0으로 고정
+        elapsedBeforeSec = totalSec;
+        startTs = null;
+        stateEl.textContent = "완료";
+        saveTimerState();
+      }
+      return true;
+    }catch{ return false; }
+  }
+
+  function syncFromInputs(){
+    const mm = Math.max(0, Math.min(300, parseInt(minEl.value || 0, 10) || 0));
+    const ss = Math.max(0, Math.min(59,  parseInt(secEl.value || 0, 10) || 0));
+    minEl.value = mm; secEl.value = ss;
+    totalSec = Math.max(1, mm*60 + ss);
+    // 리셋 성격(설정만 바꾸는 경우)일 때만 써야 함
+  }
+
+  function startUiTick(){
+    if(uiTick) clearInterval(uiTick);
+    uiTick = setInterval(() => {
+      drawTime();
+      // 시간이 다 되면 자동으로 상태만 바꾸고 입력창 띄우진 않음(백그라운드 복귀 대비)
+      if(running && getRemainingSec()<=0){
+        running=false;
+        elapsedBeforeSec = totalSec;
+        startTs=null;
+        stateEl.textContent="완료";
+        setButtons();
+        saveTimerState();
+        // 바로 다이얼로그 띄우고 싶으면 여기서 openDlg("auto","시간 종료") 호출하면 됨
+      }
+    }, 300);
+  }
+
+  function stopUiTick(){
+    if(uiTick){ clearInterval(uiTick); uiTick=null; }
+  }
+
+  // ====== 과목 선택 ======
   function pickSub(s){
     subject = s;
     mathBtn.classList.toggle("on", s==="수학");
@@ -175,79 +250,93 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   mathBtn.onclick = () => pickSub("수학");
   sciBtn.onclick  = () => pickSub("과학");
 
+  // ====== 기록 입력창 ======
   function openDlg(mode, reason){
     dlgMode = mode;
     errEl.style.display="none";
     scoreEl.value="";
     manualMinEl.value="";
+
     if(mode==="manual"){
       dlgTitle.textContent="기록 추가(수동)";
       spentInfo.textContent="수동 기록: 공부시간(분)을 직접 적어줘.";
-      manualMinEl.style.display="block";
+      manualMinEl.placeholder="예: 25";
     }else{
       dlgTitle.textContent="기록 입력";
-      const spentSec = Math.max(0, Math.round(spent));
+      const spentSec = Math.max(0, Math.round(getElapsedSec()));
       spentInfo.textContent = `기록 시간: ${fmt(spentSec)} (사유: ${reason})`;
-      manualMinEl.style.display="block"; // 표시하되 자동모드에선 비워도 됨
-      manualMinEl.placeholder = "자동이면 비워도 됨";
+      manualMinEl.placeholder="자동이면 비워도 됨";
     }
     dlg.showModal();
   }
 
-  function startTick(){
-    if (timer) clearInterval(timer);
-    running = true;
-    stateEl.textContent = "진행 중";
-    startedAt = startedAt ?? Date.now();
-    let last = Date.now();
-
-    timer = setInterval(() => {
-      const now = Date.now();
-      const dt = (now - last) / 1000;
-      last = now;
-
-      spent += dt;
-      remaining = Math.max(0, Math.round(total - spent));
-      drawTime();
-
-      if (remaining <= 0) {
-        clearInterval(timer); timer=null;
-        running=false;
-        stateEl.textContent = "완료";
-        setButtons();
-        openDlg("auto", "시간 종료");
-      }
-    }, 250);
-
+  // ====== 타이머 동작 ======
+  function startTimer(){
+    // 처음 시작이면 입력값으로 total 설정 + 초기화
+    if(startTs===null && elapsedBeforeSec===0 && !running){
+      syncFromInputs();
+      elapsedBeforeSec = 0;
+      startTs = nowMs();
+      running = true;
+    } else {
+      // 이미 일시정지 상태였다면 resume로 처리
+      startTs = nowMs();
+      running = true;
+    }
+    stateEl.textContent="진행 중";
+    drawTime();
     setButtons();
+    saveTimerState();
+    startUiTick();
   }
 
   function pauseTimer(){
-    if (!running) return;
+    if(!running) return;
+    // 누적 경과에 더하고 멈춤
+    elapsedBeforeSec = getElapsedSec();
     running = false;
-    stateEl.textContent = "일시정지";
-    if (timer) { clearInterval(timer); timer=null; }
+    startTs = null;
+    stateEl.textContent="일시정지";
     setButtons();
+    saveTimerState();
   }
 
   function finishTimer(){
-    if (timer) { clearInterval(timer); timer=null; }
-    running=false;
+    // 언제든 종료 가능(시작한 적 있어야)
+    if(startTs===null && elapsedBeforeSec===0) return;
+    // running이면 경과 계산 고정
+    elapsedBeforeSec = getElapsedSec();
+    running = false;
+    startTs = null;
     stateEl.textContent="종료됨";
     setButtons();
-    openDlg("auto", "수동 종료");
+    saveTimerState();
+    openDlg("auto","수동 종료");
   }
 
   function resetTimer(){
-    if (timer) { clearInterval(timer); timer=null; }
     running=false;
+    startTs=null;
+    elapsedBeforeSec=0;
     stateEl.textContent="준비됨";
-    startedAt=null;
-    spent=0;
     syncFromInputs();
+    // 설정값을 totalSec로 반영한 후 초기화
+    // (syncFromInputs가 totalSec 바꿨으니 그대로)
+    saveTimerState();
+    drawTime();
     setButtons();
   }
 
+  // 버튼 연결
+  startBtn.onclick  = startTimer;
+  pauseBtn.onclick  = pauseTimer;
+  resumeBtn.onclick = startTimer;
+  finishBtn.onclick = finishTimer;
+  resetBtn.onclick  = resetTimer;
+
+  manualBtn.onclick = () => openDlg("manual","");
+
+  // ====== 랭킹 ======
   function setFilter(f){
     filter = f;
     tabAll.classList.toggle("on", f==="전체");
@@ -298,30 +387,11 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   clearBtn.onclick=()=>{
     if(!confirm("기록 전부 삭제할까?")) return;
     data=[];
-    localStorage.setItem(KEY,"[]");
+    localStorage.setItem(DATA_KEY,"[]");
     renderRank();
   };
 
-  // 버튼 이벤트
-  startBtn.onclick=()=>{
-    if(running) return;
-    if(startedAt===null){
-      const mm = Math.max(0, Math.min(300, parseInt(minEl.value||0,10)||0));
-      const ss = Math.max(0, Math.min(59, parseInt(secEl.value||0,10)||0));
-      total = Math.max(1, mm*60 + ss);
-      remaining = total;
-      spent = 0;
-    }
-    startTick();
-  };
-  pauseBtn.onclick=pauseTimer;
-  resumeBtn.onclick=startTick;
-  finishBtn.onclick=finishTimer;
-  resetBtn.onclick=resetTimer;
-
-  manualBtn.onclick=()=>openDlg("manual","");
-
-  // 저장
+  // ====== 저장 ======
   saveBtn.onclick=()=>{
     const v=(scoreEl.value||"").trim();
     const m=v.match(/^(\d+)\s*\/\s*(\d+)$/);
@@ -337,31 +407,68 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
       const mm = parseInt(manualMinEl.value||"",10);
       if(!(mm>=0)){ errEl.textContent="수동 기록은 공부시간(분)을 숫자로 적어줘."; errEl.style.display="block"; return; }
       spentSec = mm*60;
-    }else{
-      // 자동 기록은 타이머 경과시간
-      spentSec = Math.max(0, Math.round(spent));
-      // 사용자가 manualMin에 숫자를 넣었으면 그걸로 덮어쓰기(원하면)
+    } else {
+      // 자동 기록: 실제 경과시간
+      spentSec = Math.max(0, Math.round(getElapsedSec()));
+      // 사용자가 수동 시간 넣으면 덮어쓰기 허용
       const mm = parseInt(manualMinEl.value||"",10);
       if(mm>=0) spentSec = mm*60;
     }
 
     const acc=Math.round(correct/solved*100);
     data.push({ts:Date.now(),subject,correct,solved,acc,spentSec});
-    localStorage.setItem(KEY,JSON.stringify(data));
+    localStorage.setItem(DATA_KEY,JSON.stringify(data));
 
     dlg.close();
     renderRank();
 
-    // 자동 기록이면 타이머 리셋
-    if(dlgMode!=="manual") resetTimer();
+    if(dlgMode!=="manual"){
+      resetTimer();
+    }
   };
 
   skipBtn.onclick=()=>{ dlg.close(); if(dlgMode!=="manual") resetTimer(); };
 
-  // 초기
-  syncFromInputs();
+  // ====== 페이지 숨김/복귀 처리 ======
+  // 앱을 떠나도 시간은 Date.now로 계산되니까, 복귀하면 정확히 맞음.
+  document.addEventListener("visibilitychange", () => {
+    // 숨겨질 때 상태 저장
+    saveTimerState();
+    // 돌아올 때도 업데이트
+    if(!document.hidden){
+      // 혹시 백그라운드에서 끝났다면 상태 반영
+      if(running && getRemainingSec()<=0){
+        running=false;
+        elapsedBeforeSec = totalSec;
+        startTs=null;
+        stateEl.textContent="완료";
+        saveTimerState();
+      }
+      drawTime();
+      setButtons();
+    }
+  });
+
+  // ====== 초기 로드 ======
+  // 저장된 타이머 상태 복원
+  const restored = loadTimerState();
+  if(restored){
+    // 입력칸에 totalSec 반영
+    minEl.value = Math.floor(totalSec/60);
+    secEl.value = totalSec%60;
+    if(running) stateEl.textContent="진행 중";
+    else if(getRemainingSec()<=0 && (elapsedBeforeSec>=totalSec)) stateEl.textContent="완료";
+    else if(startTs===null && elapsedBeforeSec>0) stateEl.textContent="일시정지";
+  } else {
+    // 초기 기본
+    syncFromInputs();
+    saveTimerState();
+  }
+
+  drawTime();
   setButtons();
   renderRank();
+  startUiTick();
 })();
 </script>
 </body>
